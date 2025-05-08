@@ -18,7 +18,6 @@ export class DeviceStatusListener implements OnModuleInit {
   }
 
   private registerListeners() {
-    // Listen for device status change events
     this.eventEmitter.on('device.status.changed', (payload) => {
       this.handleDeviceStatusChange(payload);
     });
@@ -33,17 +32,14 @@ export class DeviceStatusListener implements OnModuleInit {
         return;
       }
 
-      // Create and emit device status event
       const deviceStatusEvent = new DeviceStatusEvent(
         this.socketClientService,
         { deviceId, status },
         `Device is now ${status}`,
       );
 
-      // Emit to user room
       deviceStatusEvent.emit(userId);
 
-      // Log the emission
       this.logger.debug(`Emitted device status for device ${deviceId} to user ${userId}`);
     } catch (error) {
       this.logger.error(`Error handling device status: ${error.message}`);

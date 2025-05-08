@@ -11,27 +11,19 @@ export abstract class BaseMqttHandler {
 
   constructor(protected readonly topicService: MqttTopicService) {}
 
-  /**
-   * Main handler method to process MQTT messages
-   * @param packet - Raw MQTT message
-   */
   public async handle(packet: IMqttMessage): Promise<void> {
     try {
-      // Parse topic
       const parsedTopic = this.topicService.parseTopic(packet.topic);
 
-      // Validate topic structure
       if (!parsedTopic.isValid) {
         this.logger.warn(`Invalid topic structure: ${packet.topic}`);
         return;
       }
 
-      // Check if this handler is for this message type
       if (parsedTopic.messageType !== this.messageType) {
         return;
       }
 
-      // Parse and validate payload
       const { deviceCode } = parsedTopic;
       const payload = this.parsePayload(packet.payload);
 
@@ -42,7 +34,6 @@ export abstract class BaseMqttHandler {
         return;
       }
 
-      // Create structured MQTT message
       const message: MqttMessage = {
         topic: packet.topic,
         payload: packet.payload,
@@ -50,7 +41,6 @@ export abstract class BaseMqttHandler {
         deviceCode,
       };
 
-      // Process the validated message
       await this.processMessage(message, payload);
     } catch (error) {
       this.logger.error(
@@ -60,17 +50,11 @@ export abstract class BaseMqttHandler {
     }
   }
 
-  /**
-   * Parse and validate the message payload
-   * @param payload - Raw message payload
-   * @returns Parsed and validated payload or null if invalid
-   */
   protected parsePayload<T>(payload: Buffer): T | null {
     try {
       const rawPayload = payload.toString();
       const jsonPayload = JSON.parse(rawPayload);
 
-      // Use class-transformer and class-validator if a DTO class is provided
       if (this.getDtoClass()) {
         const dto = plainToInstance(this.getDtoClass(), jsonPayload);
         const errors = validateSync(dto);
@@ -95,19 +79,10 @@ export abstract class BaseMqttHandler {
     }
   }
 
-  /**
-   * Get the DTO class for validation
-   * Override in subclasses to provide specific DTO class
-   */
   protected getDtoClass(): any {
     return null;
   }
 
-  /**
-   * Process the validated message - to be implemented by subclasses
-   * @param message - The structured MQTT message
-   * @param payload - The parsed and validated payload
-   */
   protected abstract processMessage(
     message: MqttMessage,
     payload: any,

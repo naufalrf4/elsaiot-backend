@@ -19,7 +19,6 @@ export class UserController {
   @ApiOperation({ summary: 'Get current user profile' })
   @ApiResponse({ status: 200, description: 'User profile retrieved successfully' })
   async getProfile(@CurrentUser() user: User) {
-    // The user is automatically injected from the JWT token
     return {
       message: 'User profile retrieved successfully',
       data: user,

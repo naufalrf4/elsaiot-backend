@@ -22,17 +22,14 @@ export class MqttEventListener implements OnModuleInit {
   }
 
   private registerListeners() {
-    // Listen for sensor data events from MQTT
     this.eventEmitter.on('sensor.data.received', (payload) => {
       this.handleSensorData(payload);
     });
 
-    // Listen for calibration events from MQTT
     this.eventEmitter.on('calibration.completed', (payload) => {
       this.handleCalibrationStatus(payload);
     });
 
-    // Listen for offset configuration events from MQTT
     this.eventEmitter.on('offset.updated', (payload) => {
       this.handleOffsetStatus(payload);
     });
@@ -47,7 +44,6 @@ export class MqttEventListener implements OnModuleInit {
         return;
       }
 
-      // Find device owner
       const device = await this.deviceRepository.findByDeviceId(deviceId);
 
       if (!device || !device.userId) {
@@ -55,16 +51,13 @@ export class MqttEventListener implements OnModuleInit {
         return;
       }
 
-      // Create and emit sensor data event
       const sensorDataEvent = new SensorDataEvent(
         this.socketClientService,
         data,
       );
 
-      // Emit to user room
       sensorDataEvent.emit(device.userId);
 
-      // Log the emission
       this.logger.debug(`Emitted sensor data for device ${deviceId} to user ${device.userId}`);
     } catch (error) {
       this.logger.error(`Error handling sensor data: ${error.message}`);
@@ -80,7 +73,6 @@ export class MqttEventListener implements OnModuleInit {
         return;
       }
 
-      // Find device owner
       const device = await this.deviceRepository.findByDeviceId(deviceId);
 
       if (!device || !device.userId) {
@@ -88,17 +80,14 @@ export class MqttEventListener implements OnModuleInit {
         return;
       }
 
-      // Create and emit calibration status event
       const calibrationEvent = new CalibrationStatusEvent(
         this.socketClientService,
         { status, sensorType },
         message,
       );
 
-      // Emit to user room
       calibrationEvent.emit(device.userId);
 
-      // Log the emission
       this.logger.debug(`Emitted calibration status for device ${deviceId} to user ${device.userId}`);
     } catch (error) {
       this.logger.error(`Error handling calibration status: ${error.message}`);
@@ -114,7 +103,6 @@ export class MqttEventListener implements OnModuleInit {
         return;
       }
 
-      // Find device owner
       const device = await this.deviceRepository.findByDeviceId(deviceId);
 
       if (!device || !device.userId) {
@@ -122,17 +110,14 @@ export class MqttEventListener implements OnModuleInit {
         return;
       }
 
-      // Create and emit offset status event
       const offsetEvent = new OffsetStatusEvent(
         this.socketClientService,
         { sensorType, min, max },
         `Offset configuration updated for ${sensorType}`,
       );
 
-      // Emit to user room
       offsetEvent.emit(device.userId);
 
-      // Log the emission
       this.logger.debug(`Emitted offset status for device ${deviceId} to user ${device.userId}`);
     } catch (error) {
       this.logger.error(`Error handling offset status: ${error.message}`);
