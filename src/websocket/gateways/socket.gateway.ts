@@ -1,160 +1,93 @@
-import { Logger, UseGuards } from '@nestjs/common';
-import { JwtService } from '@nestjs/jwt';
-import { ConfigService } from '@nestjs/config';
-import {
-  WebSocketGateway,
-  WebSocketServer,
-  OnGatewayConnection,
-  OnGatewayDisconnect,
-  OnGatewayInit,
-  SubscribeMessage,
-  WsException,
+import { 
+  WebSocketGateway, 
+  OnGatewayConnection, 
+  OnGatewayDisconnect, 
+  OnGatewayInit, 
+  WebSocketServer 
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
-import { UserRepository } from '../../users/repositories/user.repository';
-import { DeviceRepository } from '../../devices/repositories/device.repository';
-import { SocketClientService } from '../services/socket-client.service';
-import { SocketRoomService } from '../services/socket-room.service';
+import { Logger, Injectable } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { WsJwtGuard } from '../guards/ws-jwt.guard';
-import { CurrentUserWs } from '../decorators/current-user-ws.decorator';
-import { User } from '../../users/entities/user.entity';
-import { SocketClient } from '../interfaces/socket-client.interface';
+import { SocketRoomService } from '../services/socket-room.service';
+import { DeviceRepository } from '../../devices/repositories/device.repository';
+import { UserRepository } from '../../users/repositories/user.repository';
+import { SocketClientService } from '../services/socket-client.service';
 
 @WebSocketGateway({
-  namespace: '/ws',
   cors: {
     origin: '*',
   },
 })
-export class SocketGateway
-  implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit
-{
-  @WebSocketServer() server: Server;
+@Injectable()
+export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   private readonly logger = new Logger(SocketGateway.name);
 
+  @WebSocketServer()
+  server: Server;
+
   constructor(
-    private readonly socketClientService: SocketClientService,
+    private readonly jwtService: JwtService,
+    private readonly configService: ConfigService,
     private readonly socketRoomService: SocketRoomService,
     private readonly deviceRepository: DeviceRepository,
     private readonly userRepository: UserRepository,
-    private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
+    private readonly socketClientService: SocketClientService,
   ) {}
 
-  /**
-   * Initialize the gateway after server creation
-   * @param server The Socket.IO server
-   */
-  afterInit(server: Server): void {
-    this.socketClientService.setServer(server);
+  afterInit() {
+    // Set the server instance in the SocketClientService
+    this.socketClientService.setServer(this.server);
     this.logger.log('WebSocket Gateway initialized');
   }
 
-  /**
-   * Handle new client connections
-   * @param client The client socket
-   */
-  async handleConnection(client: SocketClient): Promise<void> {
+  async handleConnection(client: Socket) {
     try {
-      const token = this.extractToken(client);
-
+      const token = client.handshake.query.token as string;
+      
       if (!token) {
         this.logger.warn(`Client ${client.id} attempted connection without token`);
-        client.disconnect();
+        this.handleDisconnect(client);
         return;
       }
 
-      const user = await this.validateToken(token);
-
-      if (!user) {
-        this.logger.warn(`Client ${client.id} attempted connection with invalid token`);
-        client.disconnect();
-        return;
-      }
-
-      // Store user in client data for later access
-      client.data.user = user;
-
-      // Assign user to room for this user and all their devices
-      await this.socketRoomService.assignUserToRooms(
-        client,
-        user.id,
-        this.deviceRepository,
-      );
-
-      this.logger.log(`Client ${client.id} connected (user: ${user.email})`);
-    } catch (error) {
-      this.logger.error(`Error handling connection: ${error.message}`);
-      client.disconnect();
-    }
-  }
-
-  /**
-   * Handle client disconnections
-   * @param client The client socket
-   */
-  async handleDisconnect(client: SocketClient): Promise<void> {
-    const user = client.data?.user;
-    if (user) {
-      this.logger.log(
-        `Client ${client.id} disconnected (user: ${user.email})`,
-      );
-    } else {
-      this.logger.log(`Client ${client.id} disconnected`);
-    }
-  }
-
-  /**
-   * Test message handler for checking connection
-   * @param client The client socket
-   * @param payload Any data sent with the event
-   * @returns Ping response with timestamp
-   */
-  @UseGuards(WsJwtGuard)
-  @SubscribeMessage('ping')
-  handlePing(
-    @CurrentUserWs() user: User,
-    client: SocketClient,
-    payload: any,
-  ): any {
-    this.logger.debug(`Received ping from client ${client.id} (user: ${user.email})`);
-    return {
-      event: 'pong',
-      data: {
-        timestamp: new Date().toISOString(),
-        userId: user.id,
-      },
-    };
-  }
-
-  /**
-   * Extract the authentication token from the connection handshake
-   * @param client The client socket
-   * @returns The token string or null if not found
-   */
-  private extractToken(client: Socket): string | null {
-    const handshake = client.handshake;
-    if (handshake?.query?.token) {
-      return handshake.query.token as string;
-    }
-    return null;
-  }
-
-  /**
-   * Validate a JWT token and return the user
-   * @param token The JWT token
-   * @returns The user or null if invalid
-   */
-  private async validateToken(token: string): Promise<User | null> {
-    try {
+      // Validate token manually since we can't use the guard directly
       const secret = this.configService.get<string>('auth.jwt.secret');
-      const payload = this.jwtService.verify(token, { secret });
+      let payload;
+      
+      try {
+        payload = this.jwtService.verify(token, { secret });
+      } catch (error) {
+        this.logger.error(`Token verification error: ${error.message}`);
+        this.handleDisconnect(client);
+        return;
+      }
+      
       const { sub: userId } = payload;
+      const user = await this.userRepository.findByIdWithoutPassword(userId);
+      
+      if (!user) {
+        this.logger.warn(`Client ${client.id} attempted connection with invalid user`);
+        this.handleDisconnect(client);
+        return;
+      }
 
-      return await this.userRepository.findByIdWithoutPassword(userId);
+      // Store user data in socket
+      client.data.user = user;
+      
+      // Join user and device rooms
+      await this.socketRoomService.assignUserToRooms(client, user.id, this.deviceRepository);
+      
+      this.logger.log(`Client connected: ${client.id} (User: ${user.id})`);
     } catch (error) {
-      this.logger.error(`Token validation error: ${error.message}`);
-      return null;
+      this.logger.error(`Connection error: ${error.message}`);
+      this.handleDisconnect(client);
     }
   }
-} 
+
+  handleDisconnect(client: Socket) {
+    this.logger.log(`Client disconnected: ${client.id}`);
+    client.disconnect();
+  }
+}

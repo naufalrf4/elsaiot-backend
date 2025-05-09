@@ -20,15 +20,13 @@ export class DeviceService implements IDeviceService {
     userId: string,
     filterOptions: DeviceFilterOptions,
   ): Promise<PaginatedResult<Device>> {
-    // Ensure we always filter by userId for security/multi-tenancy
     const result = await this.deviceRepository.findDevicesWithFilters({
       ...filterOptions,
       userId,
     });
     
-    // Return standardized paginated result format
     return {
-      data: result.devices as Device[],  // Cast to proper Device type
+      data: result.devices as Device[],  
       meta: {
         total: result.total,
         page: result.page,
@@ -45,7 +43,6 @@ export class DeviceService implements IDeviceService {
       throw new NotFoundException('Device not found');
     }
 
-    // Security check for device ownership
     if (device.userId !== userId) {
       throw new ForbiddenException('You do not have access to this device');
     }
@@ -59,18 +56,15 @@ export class DeviceService implements IDeviceService {
   ): Promise<Device> {
     const { deviceCode, name } = pairDeviceDto;
 
-    // Check if device code exists
     const existingDevice =
       await this.deviceRepository.findByDeviceCode(deviceCode);
 
-    // If device exists and is already paired
     if (existingDevice && existingDevice.userId) {
       throw new ConflictException(
         'This device is already paired with another account',
       );
     }
 
-    // Create new device or update existing unpaired device
     const device = existingDevice || new Device();
     device.deviceCode = deviceCode;
     device.userId = userId;
@@ -85,16 +79,12 @@ export class DeviceService implements IDeviceService {
     userId: string,
     updateDeviceDto: UpdateDeviceDto,
   ): Promise<Device> {
-    // First check if device exists and belongs to user
     const device = await this.findDeviceById(id, userId);
 
-    // Update device properties
     if (updateDeviceDto.name !== undefined) {
       device.name = updateDeviceDto.name;
     }
 
-    // Status can only be updated to PAIRED or OFFLINE manually
-    // ONLINE status is handled by the MQTT integration
     if (
       updateDeviceDto.status !== undefined &&
       updateDeviceDto.status !== DeviceStatus.ONLINE
@@ -106,7 +96,6 @@ export class DeviceService implements IDeviceService {
   }
 
   async removeDevice(id: string, userId: string): Promise<void> {
-    // First check if device exists and belongs to user
     const device = await this.findDeviceById(id, userId);
 
     await this.deviceRepository.removeDevice(device.id);

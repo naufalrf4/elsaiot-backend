@@ -30,7 +30,6 @@ export class DeviceRepository extends Repository<Device> {
   }
 
   async updateLastOnline(id: string): Promise<void> {
-    // Check the current status of the device
     const device = await this.findByDeviceId(id);
     const previousStatus = device ? device.status : null;
     const timestamp = new Date();
@@ -40,7 +39,6 @@ export class DeviceRepository extends Repository<Device> {
       { lastOnline: timestamp, status: DeviceStatus.ONLINE },
     );
     
-    // If device was offline before, emit an event for status change
     if (previousStatus === DeviceStatus.OFFLINE) {
       this.eventEmitter.emit('device.status.changed', {
         deviceId: id,
@@ -62,11 +60,6 @@ export class DeviceRepository extends Repository<Device> {
     return this.find({ where: { status: DeviceStatus.ONLINE } });
   }
 
-  /**
-   * Find devices that should be marked as offline based on lastOnline timestamp
-   * @param offlineThreshold Date threshold for considering a device offline
-   * @returns Array of devices to mark as offline
-   */
   async findDevicesToMarkOffline(offlineThreshold: Date): Promise<Device[]> {
     return this.createQueryBuilder('device')
       .where('device.status = :status', { status: DeviceStatus.ONLINE })
@@ -83,35 +76,27 @@ export class DeviceRepository extends Repository<Device> {
 
     const queryBuilder = this.createQueryBuilder('device');
 
-    // Always filter by user ID if provided (for multi-tenancy)
     if (userId) {
       queryBuilder.andWhere('device.userId = :userId', { userId });
     }
 
-    // Filter by status if provided
     if (status) {
       queryBuilder.andWhere('device.status = :status', { status });
     }
 
-    // Search by name if provided
     if (name) {
       queryBuilder.andWhere('device.name ILIKE :name', { name: `%${name}%` });
     }
 
-    // Add pagination
     queryBuilder.skip(page * limit);
     queryBuilder.take(limit);
 
-    // Order by last online date descending
     queryBuilder.orderBy('device.lastOnline', 'DESC');
 
-    // Execute count query for pagination
     const total = await queryBuilder.getCount();
 
-    // Execute main query
     const devices = await queryBuilder.getMany();
 
-    // Return in the existing format to maintain backward compatibility
     return {
       devices,
       total,
@@ -127,7 +112,6 @@ export class DeviceRepository extends Repository<Device> {
     
     await this.update({ id }, { status });
     
-    // If status has changed, emit an event
     if (previousStatus !== status && device?.userId) {
       this.eventEmitter.emit('device.status.changed', {
         deviceId: id,
