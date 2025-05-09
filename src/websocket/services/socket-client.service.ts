@@ -21,15 +21,53 @@ export class SocketClientService {
   }
 
   emitToUser(userId: string, event: string, data: any, message?: string): void {
-    const room = this.socketRoomService.getUserRoom(userId);
-    this.server.to(room).emit(event, this.formatResponse(event, data, message));
-    this.logger.debug(`Emitted ${event} to ${room}`);
+    try {
+      if (!this.server) {
+        this.logger.warn('Cannot emit event: Socket.IO server not initialized');
+        return;
+      }
+
+      if (!userId) {
+        this.logger.warn(`Cannot emit ${event}: userId is undefined or null`);
+        return;
+      }
+
+      const room = this.socketRoomService.getUserRoom(userId);
+      if (!room) {
+        this.logger.warn(`Cannot emit ${event}: room is undefined for user ${userId}`);
+        return;
+      }
+
+      this.server.to(room).emit(event, this.formatResponse(event, data, message));
+      this.logger.debug(`Emitted ${event} to ${room}`);
+    } catch (error) {
+      this.logger.error(`Error emitting to user ${userId}: ${error.message}`);
+    }
   }
 
   emitToDevice(deviceId: string, event: string, data: any, message?: string): void {
-    const room = this.socketRoomService.getDeviceRoom(deviceId);
-    this.server.to(room).emit(event, this.formatResponse(event, data, message));
-    this.logger.debug(`Emitted ${event} to ${room}`);
+    try {
+      if (!this.server) {
+        this.logger.warn('Cannot emit event: Socket.IO server not initialized');
+        return;
+      }
+
+      if (!deviceId) {
+        this.logger.warn(`Cannot emit ${event}: deviceId is undefined or null`);
+        return;
+      }
+
+      const room = this.socketRoomService.getDeviceRoom(deviceId);
+      if (!room) {
+        this.logger.warn(`Cannot emit ${event}: room is undefined for device ${deviceId}`);
+        return;
+      }
+
+      this.server.to(room).emit(event, this.formatResponse(event, data, message));
+      this.logger.debug(`Emitted ${event} to ${room}`);
+    } catch (error) {
+      this.logger.error(`Error emitting to device ${deviceId}: ${error.message}`);
+    }
   }
 
   formatResponse(event: string, data: any, message?: string): any {

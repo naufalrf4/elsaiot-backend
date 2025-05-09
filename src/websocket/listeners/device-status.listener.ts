@@ -25,24 +25,43 @@ export class DeviceStatusListener implements OnModuleInit {
 
   private async handleDeviceStatusChange(payload: any) {
     try {
-      const { deviceId, status, userId } = payload;
+      this.logger.debug(`Device status payload: ${JSON.stringify(payload || {})}`);
+      
+      if (!payload) {
+        this.logger.warn('Received undefined or null payload for device status change');
+        return;
+      }
 
-      if (!deviceId || !userId) {
-        this.logger.warn('Received device status without deviceId or userId');
+      const { deviceId, status, userId, from, to } = payload;
+
+      if (!deviceId) {
+        this.logger.warn('Received device status without deviceId');
+        return;
+      }
+
+      if (!userId) {
+        this.logger.warn(`Received device status for device ${deviceId} without userId`);
+        return;
+      }
+
+      const deviceStatus = status || to;
+      
+      if (!deviceStatus) {
+        this.logger.warn(`Received device status for device ${deviceId} without status/to value`);
         return;
       }
 
       const deviceStatusEvent = new DeviceStatusEvent(
         this.socketClientService,
-        { deviceId, status },
-        `Device is now ${status}`,
+        { deviceId, status: deviceStatus, from },
+        `Device is now ${deviceStatus}`
       );
 
       deviceStatusEvent.emit(userId);
 
       this.logger.debug(`Emitted device status for device ${deviceId} to user ${userId}`);
     } catch (error) {
-      this.logger.error(`Error handling device status: ${error.message}`);
+      this.logger.error(`Error handling device status: ${error.message}`, error.stack);
     }
   }
 } 
