@@ -6,7 +6,6 @@ import { MessageType } from './mqtt-topic.interface';
 export interface IMqttMessage {
   topic: string;
   payload: Buffer;
-  // Add other properties from mqtt.js packet if needed
 }
 
 export interface MqttMessage {
@@ -18,13 +17,25 @@ export interface MqttMessage {
 
 export interface SensorDataPayload {
   timestamp?: string;
-  ph: number;
-  tds: number;
-  dissolved_oxygen: number;
-  temperature: number;
-  ph_volt?: number;
-  tds_volt?: number;
-  do_volt?: number;
+  ph: {
+    raw: number;
+    voltage?: number;
+    calibrated?: number;
+  };
+  tds: {
+    raw: number;
+    voltage?: number;
+    calibrated?: number;
+  };
+  do: {
+    raw: number;
+    voltage?: number;
+    calibrated?: number;
+  };
+  temperature: {
+    value: number;
+    [key: string]: unknown;
+  };
 }
 
 export enum SensorType {

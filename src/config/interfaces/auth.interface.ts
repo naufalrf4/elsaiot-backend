@@ -8,6 +8,7 @@ export interface GoogleOAuthConfig {
   clientId: string;
   clientSecret: string;
   callbackUrl: string;
+  allowedDomains?: string[];
 }
 
 export interface AuthConfig {

@@ -3,7 +3,7 @@
 /node_modules
 /build
 /docs
-/memory-bank
+# /memory-bank
 
 # Logs
 logs

@@ -3,7 +3,6 @@ import { ConfigService } from '@nestjs/config';
 import {
   MessageType,
   ParsedTopic,
-  TOPIC_PATTERNS,
 } from '../interfaces/mqtt-topic.interface';
 
 @Injectable()

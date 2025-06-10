@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   UnauthorizedException,
@@ -11,12 +12,29 @@ import { RefreshTokenRepository } from '../../users/repositories/refresh-token.r
 import { UserRepository } from '../../users/repositories/user.repository';
 import { RegisterDto } from '../dto/register.dto';
 import { SignInDto } from '../dto/signin.dto';
+import { GoogleProfile } from '../interfaces/google-profile.interface';
+import { RefreshToken } from '../../users/entities/refresh-token.entity';
+import { Request } from 'express';
+
+interface TokenPayload {
+  sub: string;
+  iat?: number;
+  exp?: number;
+  email?: string;
+  role?: string;
+}
+
+interface DeviceInfo {
+  ipAddress?: string;
+  userAgent?: string;
+  deviceFingerprint?: string;
+}
 
 @Injectable()
 export class AuthService {
   constructor(
     private readonly userRepository: UserRepository,
-    private readonly refreshTokenRepository: RefreshTokenRepository,
+    public readonly refreshTokenRepository: RefreshTokenRepository,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {
@@ -69,7 +87,10 @@ export class AuthService {
   /**
    * Authenticate user and generate tokens
    */
-  async login(signInDto: SignInDto): Promise<{
+  async login(
+    signInDto: SignInDto, 
+    deviceInfo?: DeviceInfo
+  ): Promise<{
     user: Partial<User>;
     accessToken: string;
     refreshToken: string;
@@ -97,6 +118,7 @@ export class AuthService {
     const refreshToken = await this.refreshTokenRepository.createRefreshToken(
       user.id,
       refreshTokenExpiry,
+      deviceInfo
     );
 
     // Return user (without password) and tokens
@@ -108,12 +130,14 @@ export class AuthService {
   }
 
   /**
-   * Validate a refresh token and issue a new access token
+   * Validate a refresh token and issue a new access token with token rotation
    */
-  async refreshToken(token: string): Promise<{ accessToken: string }> {
-    // Find the refresh token
-    const refreshTokenEntity =
-      await this.refreshTokenRepository.findByToken(token);
+  async refreshToken(
+    token: string, 
+    deviceInfo?: DeviceInfo
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    // Find the refresh token with user relation
+    const refreshTokenEntity = await this.refreshTokenRepository.findByTokenWithUser(token);
 
     if (!refreshTokenEntity) {
       throw new UnauthorizedException('Invalid refresh token');
@@ -126,10 +150,18 @@ export class AuthService {
       throw new UnauthorizedException('Refresh token expired');
     }
 
+    // Check device fingerprint if available
+    if (deviceInfo?.deviceFingerprint && refreshTokenEntity.deviceFingerprint) {
+      if (deviceInfo.deviceFingerprint !== refreshTokenEntity.deviceFingerprint) {
+        // Potential token theft - revoke the entire token family
+        await this.refreshTokenRepository.revokeRefreshTokenFamily(token);
+        throw new UnauthorizedException('Invalid token for this device');
+      }
+    }
+
     // Get the user
-    const user = await this.userRepository.findByIdWithoutPassword(
-      refreshTokenEntity.userId,
-    );
+    const user = refreshTokenEntity.user || 
+      await this.userRepository.findByIdWithoutPassword(refreshTokenEntity.userId);
 
     if (!user) {
       // Token references a user that doesn't exist
@@ -137,16 +169,72 @@ export class AuthService {
       throw new UnauthorizedException('User not found');
     }
 
+    // Mark the current token as used
+    await this.refreshTokenRepository.markTokenAsUsed(token);
+
     // Generate a new access token
     const accessToken = this.generateAccessToken(user);
 
-    return { accessToken };
+    // Generate a new refresh token (token rotation)
+    const refreshTokenExpiry = this.getRefreshTokenExpiryTime();
+    const newRefreshToken = await this.refreshTokenRepository.createRefreshToken(
+      user.id,
+      refreshTokenExpiry,
+      deviceInfo,
+      token // Pass the current token to link them
+    );
+
+    return { 
+      accessToken,
+      refreshToken: newRefreshToken.token
+    };
+  }
+
+  /**
+   * Validate a refresh token without creating a new one (for token introspection)
+   */
+  async validateRefreshToken(token: string, userId: string): Promise<boolean> {
+    const refreshToken = await this.refreshTokenRepository.findByToken(token);
+    
+    if (!refreshToken) {
+      return false;
+    }
+    
+    // Check if token belongs to the specified user
+    if (refreshToken.userId !== userId) {
+      // Log potential token theft attempt
+      console.warn(`Token theft attempt: Token belongs to user ${refreshToken.userId} but used by ${userId}`);
+      await this.refreshTokenRepository.revokeToken(token);
+      return false;
+    }
+    
+    // Check expiration
+    if (refreshToken.expiresAt < new Date()) {
+      return false;
+    }
+    
+    return !refreshToken.isUsed && !refreshToken.isRevoked;
+  }
+
+  /**
+   * Parse and validate JWT token
+   */
+  async parseJwtToken(token: string): Promise<TokenPayload | null> {
+    try {
+      const payload = this.jwtService.verify(token, {
+        secret: this.configService.get<string>('auth.jwt.secret'),
+      });
+      
+      return payload;
+    } catch (error) {
+      return null;
+    }
   }
 
   /**
    * Generate JWT access token
    */
-  private generateAccessToken(user: User): string {
+  generateAccessToken(user: User): string {
     const payload = {
       sub: user.id,
       email: user.email,
@@ -165,7 +253,7 @@ export class AuthService {
    * Remove sensitive data from user object
    */
   private sanitizeUser(user: User): Partial<User> {
-    const { password, ...result } = user;
+    const { password, createdAt, updatedAt, active, ...result } = user;
     return result;
   }
 
@@ -176,10 +264,8 @@ export class AuthService {
     const expiry =
       this.configService.get<string>('auth.jwt.refreshTokenExpiration') || '7d';
 
-    // Parse expiry time to milliseconds
     const match = expiry.match(/^(\d+)([smhd])$/);
     if (!match) {
-      // Default to 7 days if invalid format
       return 7 * 24 * 60 * 60 * 1000;
     }
 
@@ -188,15 +274,15 @@ export class AuthService {
 
     switch (unit) {
       case 's':
-        return numValue * 1000; // seconds
+        return numValue * 1000;
       case 'm':
-        return numValue * 60 * 1000; // minutes
+        return numValue * 60 * 1000;
       case 'h':
-        return numValue * 60 * 60 * 1000; // hours
+        return numValue * 60 * 60 * 1000;
       case 'd':
-        return numValue * 24 * 60 * 60 * 1000; // days
+        return numValue * 24 * 60 * 60 * 1000;
       default:
-        return 7 * 24 * 60 * 60 * 1000; // default to 7 days
+        return 7 * 24 * 60 * 60 * 1000;
     }
   }
 
@@ -216,5 +302,68 @@ export class AuthService {
       throw new NotFoundException(`User with ID ${userId} not found`);
     }
     return user;
+  }
+
+  /**
+   * Validate a Google user and create/update user record
+   */
+  async validateGoogleUser(
+    profile: GoogleProfile,
+  ): Promise<User> {
+    const { googleId, email, fullName } = profile;
+
+    // Check if user exists with this email
+    const existingUser = await this.userRepository.findByEmail(email);
+
+    if (existingUser) {
+      // If user exists but has a different googleId, handle conflict
+      if (existingUser.googleId && existingUser.googleId !== googleId) {
+        throw new ConflictException('Email already associated with a different Google account');
+      }
+
+      // Update googleId if not set
+      if (!existingUser.googleId) {
+        existingUser.googleId = googleId;
+        await this.userRepository.save(existingUser);
+      }
+
+      return existingUser;
+    }
+
+    // Create new user from Google profile
+    const newUser = await this.userRepository.createGoogleUser(
+      email,
+      fullName,
+      googleId,
+    );
+
+    return newUser;
+  }
+
+  /**
+   * Invalidate a specific refresh token
+   */
+  async invalidateRefreshToken(token: string, userId: string): Promise<void> {
+    const refreshToken = await this.refreshTokenRepository.findByToken(token);
+    
+    // Only allow users to invalidate their own tokens
+    if (refreshToken && refreshToken.userId === userId) {
+      await this.refreshTokenRepository.revokeToken(token);
+    } else if (refreshToken) {
+      throw new UnauthorizedException('Cannot invalidate token belonging to another user');
+    }
+  }
+
+  /**
+   * Get device information from request
+   */
+  getDeviceInfoFromRequest(req: Request): DeviceInfo {
+    const deviceFingerprint = req.headers['x-device-fingerprint'] as string;
+    
+    return {
+      ipAddress: req.ip,
+      userAgent: req.headers['user-agent'] as string,
+      deviceFingerprint,
+    };
   }
 }

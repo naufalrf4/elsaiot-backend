@@ -7,10 +7,13 @@ import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { GlobalExceptionFilter } from './shared/filters/global-exception.filter';
 import { GlobalResponseInterceptor } from './shared/interceptors/global-response.interceptor';
+import { ConfigurableSocketIoAdapter } from './websocket/adapters/socket-io.adapter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const configService = app.get(ConfigService);
+
+  app.useWebSocketAdapter(new ConfigurableSocketIoAdapter(app, configService));
 
   const apiPrefix = configService.get<string>('app.apiPrefix') || 'api/v1';
   app.setGlobalPrefix(apiPrefix);
@@ -20,7 +23,7 @@ async function bootstrap() {
   app.use(cookieParser());
 
   app.enableCors({
-    origin: configService.get<string>('app.corsOrigin') || '*',
+    origin: configService.get<string>('app.corsOrigin') || 'http://localhost:3001',
     credentials: true,
   });
 

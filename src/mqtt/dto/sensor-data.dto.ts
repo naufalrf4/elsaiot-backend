@@ -1,40 +1,42 @@
-import { IsNumber, IsOptional, IsString, Max, Min } from 'class-validator';
-import { SensorDataPayload } from '../interfaces/mqtt-message.interface';
+import { IsOptional, IsNumber, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
 
-export class SensorDataDto implements SensorDataPayload {
+class SensorValue {
+  @IsNumber()
+  raw: number;
+
+  @IsOptional()
+  @IsNumber()
+  voltage?: number;
+
+  @IsOptional()
+  @IsNumber()
+  calibrated?: number;
+}
+
+class TemperatureValue {
+  @IsNumber()
+  value: number;
+}
+
+export class SensorDataDto {
   @IsOptional()
   @IsString()
   timestamp?: string;
 
-  @IsNumber()
-  @Min(0)
-  @Max(14)
-  ph: number;
+  @ValidateNested()
+  @Type(() => SensorValue)
+  ph: SensorValue;
 
-  @IsOptional()
-  @IsNumber()
-  ph_volt?: number;
+  @ValidateNested()
+  @Type(() => SensorValue)
+  tds: SensorValue;
 
-  @IsNumber()
-  @Min(0)
-  @Max(2000)
-  tds: number;
+  @ValidateNested()
+  @Type(() => SensorValue)
+  do: SensorValue;
 
-  @IsOptional()
-  @IsNumber()
-  tds_volt?: number;
-
-  @IsNumber()
-  @Min(0)
-  @Max(20)
-  dissolved_oxygen: number;
-
-  @IsOptional()
-  @IsNumber()
-  do_volt?: number;
-
-  @IsNumber()
-  @Min(-10)
-  @Max(50)
-  temperature: number;
+  @ValidateNested()
+  @Type(() => TemperatureValue)
+  temperature: TemperatureValue;
 }

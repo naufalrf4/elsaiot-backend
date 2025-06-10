@@ -21,7 +21,6 @@ export const CurrentUser = createParamDecorator(
     const request = ctx.switchToHttp().getRequest();
     const user = request.user;
 
-    // Return the specific property if requested
     if (propertyPath) {
       const properties = propertyPath.split('.');
       return properties.reduce((obj, prop) => obj?.[prop], user);

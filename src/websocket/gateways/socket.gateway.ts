@@ -9,17 +9,12 @@ import { Server, Socket } from 'socket.io';
 import { Logger, Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import { WsJwtGuard } from '../guards/ws-jwt.guard';
 import { SocketRoomService } from '../services/socket-room.service';
 import { DeviceRepository } from '../../devices/repositories/device.repository';
 import { UserRepository } from '../../users/repositories/user.repository';
 import { SocketClientService } from '../services/socket-client.service';
 
-@WebSocketGateway({
-  cors: {
-    origin: '*',
-  },
-})
+@WebSocketGateway()
 @Injectable()
 export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect, OnGatewayInit {
   private readonly logger = new Logger(SocketGateway.name);
@@ -37,7 +32,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect, 
   ) {}
 
   afterInit() {
-    // Set the server instance in the SocketClientService
     this.socketClientService.setServer(this.server);
     this.logger.log('WebSocket Gateway initialized');
   }
@@ -52,7 +46,6 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         return;
       }
 
-      // Validate token manually since we can't use the guard directly
       const secret = this.configService.get<string>('auth.jwt.secret');
       let payload;
       
@@ -73,10 +66,8 @@ export class SocketGateway implements OnGatewayConnection, OnGatewayDisconnect, 
         return;
       }
 
-      // Store user data in socket
       client.data.user = user;
       
-      // Join user and device rooms
       await this.socketRoomService.assignUserToRooms(client, user.id, this.deviceRepository);
       
       this.logger.log(`Client connected: ${client.id} (User: ${user.id})`);

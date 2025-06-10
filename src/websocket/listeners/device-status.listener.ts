@@ -24,44 +24,26 @@ export class DeviceStatusListener implements OnModuleInit {
   }
 
   private async handleDeviceStatusChange(payload: any) {
+    if (!payload) return this.logger.warn('Received empty payload for device status');
+
+    const { deviceId, status, userId, from, to } = payload;
+    if (!deviceId) return this.logger.warn('Missing deviceId in status payload');
+    if (!userId) return this.logger.warn(`Device ${deviceId} missing userId in status payload`);
+
+    const resolvedStatus = status || to;
+    if (!resolvedStatus) return this.logger.warn(`Missing status for device ${deviceId}`);
+
     try {
-      this.logger.debug(`Device status payload: ${JSON.stringify(payload || {})}`);
-      
-      if (!payload) {
-        this.logger.warn('Received undefined or null payload for device status change');
-        return;
-      }
-
-      const { deviceId, status, userId, from, to } = payload;
-
-      if (!deviceId) {
-        this.logger.warn('Received device status without deviceId');
-        return;
-      }
-
-      if (!userId) {
-        this.logger.warn(`Received device status for device ${deviceId} without userId`);
-        return;
-      }
-
-      const deviceStatus = status || to;
-      
-      if (!deviceStatus) {
-        this.logger.warn(`Received device status for device ${deviceId} without status/to value`);
-        return;
-      }
-
-      const deviceStatusEvent = new DeviceStatusEvent(
+      const event = new DeviceStatusEvent(
         this.socketClientService,
-        { deviceId, status: deviceStatus, from },
-        `Device is now ${deviceStatus}`
+        { deviceId, status: resolvedStatus, from },
+        `Device is now ${resolvedStatus}`,
       );
+      event.emit(userId);
 
-      deviceStatusEvent.emit(userId);
-
-      this.logger.debug(`Emitted device status for device ${deviceId} to user ${userId}`);
+      this.logger.debug(`Device status emitted for device ${deviceId} to user ${userId}`);
     } catch (error) {
-      this.logger.error(`Error handling device status: ${error.message}`, error.stack);
+      this.logger.error(`Device status handling failed: ${error.message}`, error.stack);
     }
   }
-} 
+}

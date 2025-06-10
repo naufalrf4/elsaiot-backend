@@ -35,6 +35,19 @@ export const validationSchema = Joi.object({
   GOOGLE_CLIENT_SECRET: Joi.string().allow('').default(''),
   GOOGLE_CALLBACK_URL: Joi.string().allow('').default(''),
 
+  // Email Configuration
+  MAIL_HOST: Joi.string().default('smtp.example.com'),
+  MAIL_PORT: Joi.number().default(587),
+  MAIL_SECURE: Joi.boolean().default(false),
+  MAIL_USER: Joi.string().allow('').default(''),
+  MAIL_PASSWORD: Joi.string().allow('').default(''),
+  MAIL_FROM: Joi.string().default('no-reply@elsaiot.com'),
+  FRONTEND_URL: Joi.string().default('http://localhost:3000'),
+
+  // Rate Limiting
+  THROTTLE_TTL: Joi.number().default(60),
+  THROTTLE_LIMIT: Joi.number().default(10),
+
   // Logging
   LOG_LEVEL: Joi.string()
     .valid('error', 'warn', 'info', 'debug')

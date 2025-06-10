@@ -33,19 +33,33 @@ export class SocketClientService {
       }
 
       const room = this.socketRoomService.getUserRoom(userId);
+      this.logger.debug(`Resolved room for user ${userId}: ${room}`);
+
       if (!room) {
-        this.logger.warn(`Cannot emit ${event}: room is undefined for user ${userId}`);
+        this.logger.warn(
+          `Cannot emit ${event}: room is undefined for user ${userId}`,
+        );
         return;
       }
 
-      this.server.to(room).emit(event, this.formatResponse(event, data, message));
-      this.logger.debug(`Emitted ${event} to ${room}`);
+      const payload = this.formatResponse(event, data, message);
+      this.logger.debug(
+        `Prepared payload for ${event}: ${JSON.stringify(payload)}`,
+      );
+
+      this.server.to(room).emit(event, payload);
+      this.logger.debug(`Emitted ${event} to ${room} for user ${userId}`);
     } catch (error) {
       this.logger.error(`Error emitting to user ${userId}: ${error.message}`);
     }
   }
 
-  emitToDevice(deviceId: string, event: string, data: any, message?: string): void {
+  emitToDevice(
+    deviceId: string,
+    event: string,
+    data: any,
+    message?: string,
+  ): void {
     try {
       if (!this.server) {
         this.logger.warn('Cannot emit event: Socket.IO server not initialized');
@@ -58,15 +72,26 @@ export class SocketClientService {
       }
 
       const room = this.socketRoomService.getDeviceRoom(deviceId);
+      this.logger.debug(`Resolved room for device ${deviceId}: ${room}`);
+
       if (!room) {
-        this.logger.warn(`Cannot emit ${event}: room is undefined for device ${deviceId}`);
+        this.logger.warn(
+          `Cannot emit ${event}: room is undefined for device ${deviceId}`,
+        );
         return;
       }
 
-      this.server.to(room).emit(event, this.formatResponse(event, data, message));
-      this.logger.debug(`Emitted ${event} to ${room}`);
+      const payload = this.formatResponse(event, data, message);
+      this.logger.debug(
+        `Prepared payload for ${event}: ${JSON.stringify(payload)}`,
+      );
+
+      this.server.to(room).emit(event, payload);
+      this.logger.debug(`Emitted ${event} to ${room} for device ${deviceId}`);
     } catch (error) {
-      this.logger.error(`Error emitting to device ${deviceId}: ${error.message}`);
+      this.logger.error(
+        `Error emitting to device ${deviceId}: ${error.message}`,
+      );
     }
   }
 
@@ -93,4 +118,4 @@ export class SocketClientService {
 
     return eventMap[event] || 'Event received';
   }
-} 
+}

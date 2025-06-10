@@ -19,15 +19,18 @@ import { MqttModule } from './mqtt/mqtt.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { SharedModule } from './shared/shared.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { EmailModule } from './email/email.module';
 
 import { GlobalResponseInterceptor } from './shared/interceptors/global-response.interceptor';
 import { GlobalExceptionFilter } from './shared/filters/global-exception.filter';
+import mailConfig from './config/mail.config';
+import websocketConfig from './config/websocket.config';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: configs,
+      load: [...configs, mailConfig, websocketConfig],
       validationSchema,
     }),
 
@@ -58,6 +61,7 @@ import { GlobalExceptionFilter } from './shared/filters/global-exception.filter'
     MqttModule,
     WebsocketModule,
     NotificationsModule,
+    EmailModule,
   ],
   controllers: [AppController],
   providers: [

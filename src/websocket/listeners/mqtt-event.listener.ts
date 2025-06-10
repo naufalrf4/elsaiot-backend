@@ -5,6 +5,7 @@ import { CalibrationStatusEvent } from '../events/calibration-status.event';
 import { OffsetStatusEvent } from '../events/offset-status.event';
 import { SensorDataEvent } from '../events/sensor-data.event';
 import { SocketClientService } from '../services/socket-client.service';
+import { Device } from 'src/devices/entities/device.entity';
 
 @Injectable()
 export class MqttEventListener implements OnModuleInit {
@@ -36,91 +37,101 @@ export class MqttEventListener implements OnModuleInit {
   }
 
   private async handleSensorData(payload: any) {
+    // Payload may contain:
+    //  - deviceId   -> database UUID (added by DataHandler)
+    //  - device_id  -> original deviceCode from MQTT script
+    //  - deviceCode -> (future-proof) explicit device code key
+    const { deviceId: dbId, device_id: codeSnake, deviceCode: codeCamel, ...sensorData } = payload;
+
+    const deviceIdentifier = dbId || codeSnake || codeCamel;
+    if (!deviceIdentifier) {
+      this.logger.warn('Sensor data payload missing device identifier (deviceId / device_id / deviceCode)');
+      return;
+    }
+
     try {
-      const { deviceId, ...data } = payload;
+      let device: Device | null = null; // Explicitly type 'device'
 
-      if (!deviceId) {
-        this.logger.warn('Received sensor data without deviceId');
+      if (dbId) {
+        device = await this.deviceRepository.findByDeviceId(dbId);
+      }
+
+      // If not found by dbId, or if dbId was not provided, try by deviceCode
+      if (!device) { // Check if device is still null
+        const deviceCodeToLookup = codeSnake || codeCamel;
+        if (deviceCodeToLookup) {
+          device = await this.deviceRepository.findByDeviceCode(deviceCodeToLookup);
+        }
+      }
+
+      this.logger.debug(`Device lookup result for identifier ${deviceIdentifier}: ${JSON.stringify(device)}`);
+
+      // At this point, if device is still null, it means it wasn't found by any identifier.
+      if (!device) {
+        this.logger.warn(`Device ${deviceIdentifier} not found in database.`);
         return;
       }
 
-      const device = await this.deviceRepository.findByDeviceId(deviceId);
-
-      if (!device || !device.userId) {
-        this.logger.warn(`Device ${deviceId} not found or not paired`);
+      // Now, TypeScript knows 'device' is of type 'Device' because of the '!device' check and return above.
+      // So, device.userId and device.id are safe to access.
+      if (!device.userId) {
+        this.logger.warn(`Device ${deviceIdentifier} (ID: ${device.id}) has no associated user.`);
         return;
       }
 
-      const sensorDataEvent = new SensorDataEvent(
-        this.socketClientService,
-        data,
-      );
+      const eventPayload = {
+        ...sensorData,
+        deviceId: device.id,
+      };
 
-      sensorDataEvent.emit(device.userId);
+      const event = new SensorDataEvent(this.socketClientService, eventPayload);
+      event.emit(device.userId);
 
-      this.logger.debug(`Emitted sensor data for device ${deviceId} to user ${device.userId}`);
+      this.logger.debug(`Sensor data emitted for device ${device.id} to user ${device.userId}`);
     } catch (error) {
-      this.logger.error(`Error handling sensor data: ${error.message}`);
+      this.logger.error(`Sensor data handling failed for identifier ${deviceIdentifier}: ${error.message}`, error.stack);
     }
   }
 
   private async handleCalibrationStatus(payload: any) {
+    const { deviceId, status, sensorType, message } = payload;
+    if (!deviceId) return this.logger.warn('Missing deviceId in calibration payload');
+
     try {
-      const { deviceId, status, sensorType, message } = payload;
-
-      if (!deviceId) {
-        this.logger.warn('Received calibration status without deviceId');
-        return;
-      }
-
       const device = await this.deviceRepository.findByDeviceId(deviceId);
-
       if (!device || !device.userId) {
-        this.logger.warn(`Device ${deviceId} not found or not paired`);
-        return;
+        return this.logger.warn(`Invalid or unpaired device: ${deviceId}`);
       }
 
-      const calibrationEvent = new CalibrationStatusEvent(
-        this.socketClientService,
-        { status, sensorType },
-        message,
-      );
+      const event = new CalibrationStatusEvent(this.socketClientService, { status, sensorType }, message);
+      event.emit(device.userId);
 
-      calibrationEvent.emit(device.userId);
-
-      this.logger.debug(`Emitted calibration status for device ${deviceId} to user ${device.userId}`);
+      this.logger.debug(`Calibration status emitted for device ${deviceId} to user ${device.userId}`);
     } catch (error) {
-      this.logger.error(`Error handling calibration status: ${error.message}`);
+      this.logger.error(`Calibration status handling failed: ${error.message}`);
     }
   }
 
   private async handleOffsetStatus(payload: any) {
+    const { deviceId, sensorType, min, max } = payload;
+    if (!deviceId) return this.logger.warn('Missing deviceId in offset payload');
+
     try {
-      const { deviceId, sensorType, min, max } = payload;
-
-      if (!deviceId) {
-        this.logger.warn('Received offset status without deviceId');
-        return;
-      }
-
       const device = await this.deviceRepository.findByDeviceId(deviceId);
-
       if (!device || !device.userId) {
-        this.logger.warn(`Device ${deviceId} not found or not paired`);
-        return;
+        return this.logger.warn(`Invalid or unpaired device: ${deviceId}`);
       }
 
-      const offsetEvent = new OffsetStatusEvent(
+      const event = new OffsetStatusEvent(
         this.socketClientService,
         { sensorType, min, max },
-        `Offset configuration updated for ${sensorType}`,
+        `Offset updated for ${sensorType}`,
       );
+      event.emit(device.userId);
 
-      offsetEvent.emit(device.userId);
-
-      this.logger.debug(`Emitted offset status for device ${deviceId} to user ${device.userId}`);
+      this.logger.debug(`Offset status emitted for device ${deviceId} to user ${device.userId}`);
     } catch (error) {
-      this.logger.error(`Error handling offset status: ${error.message}`);
+      this.logger.error(`Offset status handling failed: ${error.message}`);
     }
   }
-} 
+}

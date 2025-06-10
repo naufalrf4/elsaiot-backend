@@ -1,17 +1,14 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
+import { Entity, Column, PrimaryColumn, ManyToOne, JoinColumn, Index } from 'typeorm';
 import { Device } from '../../devices/entities/device.entity';
 
 @Entity('sensor_logs')
 @Index(['deviceId', 'timestamp'])
 export class SensorLog {
-  @PrimaryGeneratedColumn({ type: 'bigint' })
-  id: number;
+  @PrimaryColumn({ type: 'timestamptz' })
+  timestamp: Date;
 
   @Column({ type: 'uuid' })
   deviceId: string;
-
-  @Column({ type: 'timestamptz' })
-  timestamp: Date;
 
   @Column({ type: 'double precision', nullable: true })
   ph: number;
@@ -28,4 +25,4 @@ export class SensorLog {
   @ManyToOne(() => Device)
   @JoinColumn({ name: 'deviceId' })
   device: Device;
-} 
+}

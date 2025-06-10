@@ -9,6 +9,9 @@ export default registerAs('auth', (): AuthConfig => {
   const googleClientId = process.env.GOOGLE_CLIENT_ID;
   const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const googleCallbackUrl = process.env.GOOGLE_CALLBACK_URL;
+  const googleAllowedDomains = process.env.GOOGLE_ALLOWED_DOMAINS
+    ? process.env.GOOGLE_ALLOWED_DOMAINS.split(',')
+    : undefined;
 
   // Only include Google OAuth config if all required values are present
   const googleConfig =
@@ -17,6 +20,7 @@ export default registerAs('auth', (): AuthConfig => {
           clientId: googleClientId,
           clientSecret: googleClientSecret,
           callbackUrl: googleCallbackUrl,
+          allowedDomains: googleAllowedDomains,
         }
       : undefined;
 

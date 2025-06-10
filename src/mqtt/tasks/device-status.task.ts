@@ -27,13 +27,11 @@ export class DeviceStatusTask {
     try {
       this.logger.debug('Running device status check');
 
-      // Get timestamp threshold for offline detection
       const offlineThreshold = new Date();
       offlineThreshold.setSeconds(
         offlineThreshold.getSeconds() - this.offlineThresholdSeconds,
       );
 
-      // Get devices that are currently online but haven't sent a message since the threshold
       const devicesToMarkOffline =
         await this.deviceRepository.findDevicesToMarkOffline(offlineThreshold);
 
@@ -46,14 +44,12 @@ export class DeviceStatusTask {
         `Marking ${devicesToMarkOffline.length} devices as offline`,
       );
 
-      // Update each device and emit events
       for (const device of devicesToMarkOffline) {
         await this.deviceRepository.updateDeviceStatus(
           device.id,
           DeviceStatus.OFFLINE,
         );
 
-        // Emit event for status change
         this.eventEmitter.emit('device.status.changed', {
           deviceId: device.id,
           userId: device.userId,
